@@ -31,48 +31,17 @@ def _get_fast_encoder_args() -> list[str]:
             "65",  # Lower quality OK for analysis (faster)
         ]
 
-    # Other platforms: Check for available encoders
-    try:
-        result = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-encoders"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        encoders = result.stdout
+    from immich_memories.processing.hardware import HWAccelBackend
+    from immich_memories.processing._hardware_backends import detect_hardware_acceleration
 
-        # Try NVIDIA NVENC (GPU accelerated)
-        if "h264_nvenc" in encoders:
-            return [
-                "-c:v",
-                "h264_nvenc",
-                "-preset",
-                "p1",  # Fastest preset
-                "-rc",
-                "constqp",
-                "-qp",
-                "28",
-            ]
+    caps = detect_hardware_acceleration()
 
-        # Try VAAPI (Linux GPU)
-        if "h264_vaapi" in encoders:
-            return [
-                "-c:v",
-                "h264_vaapi",
-                "-qp",
-                "28",
-            ]
-
-        # Try Intel QSV
-        if "h264_qsv" in encoders:
-            return [
-                "-c:v",
-                "h264_qsv",
-                "-preset",
-                "veryfast",
-            ]
-    except (subprocess.SubprocessError, OSError, ValueError):
-        pass
+    if caps.backend == HWAccelBackend.NVIDIA and caps.supports_h264_encode:
+        return ["-c:v", "h264_nvenc", "-preset", "p1", "-rc", "constqp", "-qp", "28"]
+    if caps.backend == HWAccelBackend.VAAPI and caps.supports_h264_encode:
+        return ["-c:v", "h264_vaapi", "-qp", "28"]
+    if caps.backend == HWAccelBackend.QSV and caps.supports_h264_encode:
+        return ["-c:v", "h264_qsv", "-preset", "veryfast"]
 
     # Fallback to CPU libx264
     return [
