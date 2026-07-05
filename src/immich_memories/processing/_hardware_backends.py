@@ -16,6 +16,8 @@ from immich_memories.processing.hardware import (
     _check_ffmpeg_hwaccel,
 )
 
+from immich_memories.processing.hardware import _probe_encoder_real
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,9 +32,13 @@ def _detect_nvidia() -> HWAccelCapabilities | None:
     )
 
     # Check for NVENC encoders
-    caps.supports_h264_encode = _check_ffmpeg_encoder("h264_nvenc")
-    caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_nvenc")
+    # caps.supports_h264_encode = _check_ffmpeg_encoder("h264_nvenc")
+    # caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_nvenc")
+    
 
+    caps.supports_h264_encode = _check_ffmpeg_encoder("h264_nvenc") and _probe_encoder_real("h264_nvenc")
+    caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_nvenc") and _probe_encoder_real("hevc_nvenc")
+    
     # Check for NVDEC decoders
     caps.supports_h264_decode = _check_ffmpeg_decoder("h264_cuvid")
     caps.supports_h265_decode = _check_ffmpeg_decoder("hevc_cuvid")
@@ -222,9 +228,11 @@ def _detect_vaapi() -> HWAccelCapabilities | None:
     caps = HWAccelCapabilities(backend=HWAccelBackend.VAAPI)
 
     # Check for VAAPI encoders
-    caps.supports_h264_encode = _check_ffmpeg_encoder("h264_vaapi")
-    caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_vaapi")
-
+    # caps.supports_h264_encode = _check_ffmpeg_encoder("h264_vaapi")
+    # caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_vaapi")
+    caps.supports_h264_encode = _check_ffmpeg_encoder("h264_vaapi") and _probe_encoder_real("h264_vaapi")
+    caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_vaapi") and _probe_encoder_real("hevc_vaapi")
+    
     # Check for VAAPI decoders
     caps.supports_h264_decode = _check_ffmpeg_decoder("h264_vaapi") or _check_ffmpeg_hwaccel(
         "vaapi"
@@ -261,9 +269,11 @@ def _detect_qsv() -> HWAccelCapabilities | None:
     caps = HWAccelCapabilities(backend=HWAccelBackend.QSV)
 
     # Check for QSV encoders
-    caps.supports_h264_encode = _check_ffmpeg_encoder("h264_qsv")
-    caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_qsv")
-
+    # caps.supports_h264_encode = _check_ffmpeg_encoder("h264_qsv")
+    # caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_qsv")
+    caps.supports_h264_encode = _check_ffmpeg_encoder("h264_qsv") and _probe_encoder_real("h264_qsv")
+    caps.supports_h265_encode = _check_ffmpeg_encoder("hevc_qsv") and _probe_encoder_real("hevc_qsv")
+    
     # Check for QSV decoders
     caps.supports_h264_decode = _check_ffmpeg_decoder("h264_qsv")
     caps.supports_h265_decode = _check_ffmpeg_decoder("hevc_qsv")
