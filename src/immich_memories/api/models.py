@@ -162,7 +162,8 @@ class Asset(BaseModel):
     is_favorite: bool = Field(default=False, alias="isFavorite")
     is_archived: bool = Field(default=False, alias="isArchived")
     is_trashed: bool = Field(default=False, alias="isTrashed")
-    duration: str | None = None
+    #duration: str | None = None
+    duration: int | str | None = None
     # WHY: width/height from search API — needed for resolution filtering
     # BEFORE download. Without these, all non-favorites report 0×0 and get dropped.
     width: int = Field(default=0)
@@ -214,6 +215,10 @@ class Asset(BaseModel):
         if not self.duration:
             return None
         try:
+            if isinstance(self.duration, (int, float)):
+                # assume milliseconds (most likely from your values like 24741)
+                return float(self.duration) / 1000.0
+                
             # Format is typically "HH:MM:SS.mmm" or "MM:SS.mmm"
             parts = self.duration.split(":")
             if len(parts) == 3:
