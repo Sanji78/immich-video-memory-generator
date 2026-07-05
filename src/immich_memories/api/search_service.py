@@ -46,10 +46,31 @@ class SearchService:
             payload["personIds"] = person_ids
         if asset_type:
             payload["type"] = asset_type.value
+        from datetime import UTC
+
         if taken_after:
-            payload["takenAfter"] = taken_after.isoformat()
+            payload["takenAfter"] = (
+                taken_after.replace(tzinfo=UTC)
+                if taken_after.tzinfo is None
+                else taken_after.astimezone(UTC)
+            ).isoformat().replace("+00:00", "Z")
+
         if taken_before:
-            payload["takenBefore"] = taken_before.isoformat()
+            payload["takenBefore"] = (
+                taken_before.replace(tzinfo=UTC)
+                if taken_before.tzinfo is None
+                else taken_before.astimezone(UTC)
+            ).isoformat().replace("+00:00", "Z")
+
+        #if taken_after:
+        #    payload["takenAfter"] = taken_after.isoformat()
+        #if taken_before:
+        #    payload["takenBefore"] = taken_before.isoformat()
+
+        payload = {
+            k: v for k, v in payload.items()
+            if v is not None and v != "" and v != [] and v != {}
+        }
 
         data = await self._request("POST", "/search/metadata", json=payload)
         return MetadataSearchResult(**data)
