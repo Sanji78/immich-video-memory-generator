@@ -69,6 +69,50 @@ def _silent_init(**kwargs) -> None:
         os.close(saved_stderr)
         os.close(devnull_fd)
 
+def _taichi_probe_worker(backend, queue) -> None:
+    """Module-level probe target — must be a real top-level function so the
+    spawn-based multiprocessing context can pickle and re-import it in the
+    child process. A nested/closure function has no importable path and
+    fails immediately with 'Can't pickle local object'.
+    """
+    try:
+        import numpy as np
+        import taichi as ti
+
+        ti.init(arch=backend, offline_cache=True, log_level=ti.ERROR)
+
+        @ti.kernel
+        def _noop(x: ti.types.ndarray(dtype=ti.f32, ndim=1)):
+            for i in x:
+                x[i] = x[i] + 1.0
+
+        arr = np.zeros(4, dtype=np.float32)
+        _noop(arr)
+        queue.put(True)
+    except Exception:
+        queue.put(False)
+
+
+def _verify_backend_works(backend, timeout: float = 10.0) -> bool:
+    """Run a minimal real kernel launch in a subprocess so a hanging
+    GPU backend (init succeeds, first dispatch hangs forever) can be
+    detected and abandoned instead of freezing the whole pipeline.
+    """
+    import multiprocessing
+
+    ctx = multiprocessing.get_context("spawn")
+    q = ctx.Queue()
+    p = ctx.Process(target=_taichi_probe_worker, args=(backend, q))
+    p.start()
+    p.join(timeout)
+    if p.is_alive():
+        p.terminate()
+        p.join()
+        return False
+    try:
+        return q.get_nowait()
+    except Exception:
+        return False
 
 def init_taichi() -> str | None:
     """Initialize Taichi with the best available GPU backend."""
@@ -95,9 +139,13 @@ def init_taichi() -> str | None:
 
     last_error = None
     for backend, name in backends:
+        if name != "CPU" and not _verify_backend_works(backend):
+            logger.debug(f"{name} backend failed real dispatch probe, skipping")
+            continue
         try:
             _silent_init(arch=backend, offline_cache=True)
-            logger.info(f"Taichi initialized with {name} backend")
+            actual_arch = ti.cfg.arch  # what Taichi actually picked, post-fallback
+            logger.info(f"Taichi initialized (requested={name}, actual arch={actual_arch})")
             _compile_kernels()
             if SDF_AVAILABLE and init_sdf_kernels:
                 init_sdf_kernels()
