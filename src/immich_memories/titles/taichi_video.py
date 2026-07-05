@@ -110,6 +110,7 @@ def create_title_video_taichi(
     cmd = [
         "ffmpeg",
         "-y",
+        "-loglevel", "error",
         "-f",
         "rawvideo",
         "-vcodec",
@@ -177,8 +178,8 @@ def create_title_video_taichi(
     frame_q.put(None)
     writer.join()
 
-    process.wait()
     stderr = process.stderr.read() if process.stderr else b""
+    process.wait()
 
     if process.returncode != 0:
         raise RuntimeError(f"FFmpeg failed: {stderr.decode()[-500:]}")
