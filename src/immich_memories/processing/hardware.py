@@ -101,7 +101,47 @@ def _check_ffmpeg_hwaccel(hwaccel: str) -> bool:
     success, output = _run_ffmpeg_check(["-hide_banner", "-hwaccels"])
     return success and hwaccel in output
 
-
+def _probe_nvenc_real(encoder: str = "h264_nvenc") -> bool:
+    """Actually try to open the encoder instead of trusting the static
+    ``ffmpeg -encoders`` list, which reports NVENC as available even when
+    there's no NVIDIA driver / libcuda.so.1 in the container.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-f", "lavfi",
+                "-i", "color=c=black:s=16x16:d=0.01",
+                "-c:v", encoder, "-f", "null", "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
+        
+def _probe_encoder_real(encoder: str) -> bool:
+    """Actually try to open the encoder instead of trusting the static
+    ``ffmpeg -encoders``/``-hwaccels`` list, which reports an encoder as
+    available even when the underlying driver/device isn't usable
+    (missing libcuda.so.1, no /dev/dri render node, no MFX session, etc).
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-f", "lavfi",
+                "-i", "color=c=black:s=16x16:d=0.01",
+                "-c:v", encoder, "-f", "null", "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
+        
 # ---------------------------------------------------------------------------
 # FFmpeg argument builders
 # ---------------------------------------------------------------------------
