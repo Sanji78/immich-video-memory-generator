@@ -163,14 +163,19 @@ async def run_generation(
         def on_progress(phase: str, progress: float, msg: str) -> None:
             if state.cancel_requested:
                 raise GenerationError("Generation cancelled by user")
-            progress_bar.value = progress
-            status_label.set_text(msg)
+            try:
+                progress_bar.value = progress
+                status_label.set_text(msg)
+            except RuntimeError:
+                logger.debug("Progress UI update skipped: client disconnected")
 
         def on_frame_preview(jpeg_bytes: bytes) -> None:
             import base64
-
-            b64 = base64.b64encode(jpeg_bytes).decode()
-            preview_image.source = f"data:image/jpeg;base64,{b64}"
+            try:
+                b64 = base64.b64encode(jpeg_bytes).decode()
+                preview_image.source = f"data:image/jpeg;base64,{b64}"
+            except RuntimeError:
+                pass
 
         params = _build_generation_params(state, selected_clips, effective_output_path)
         params.progress_callback = on_progress
@@ -206,21 +211,28 @@ async def run_generation(
 
             await upload_to_immich(result_path, state, progress_bar, status_label)
 
-        progress_bar.value = 1.0
-        status_label.set_text("Complete!")
-        cancel_btn.set_visibility(False)
         state.output_path = result_path
-
-        _show_output(output_container, result_path)
+        try:
+            progress_bar.value = 1.0
+            status_label.set_text("Complete!")
+            cancel_btn.set_visibility(False)
+            _show_output(output_container, result_path)
+        except RuntimeError:
+            logger.info(
+                f"Client disconnected before showing result. Video saved at: {result_path}"
+            )
 
     except Exception as e:  # WHY: UI graceful degradation
         logger.exception("Video generation failed")
         safe_msg = sanitize_error_message(str(e))
-        ui.notify(f"Generation failed: {safe_msg}", type="negative")
-        cancel_btn.set_visibility(False)
-        progress_container.clear()
-        with progress_container:
-            im_info_card(f"Generation failed: {safe_msg}", variant="error")
+        try:
+            ui.notify(f"Generation failed: {safe_msg}", type="negative")
+            cancel_btn.set_visibility(False)
+            progress_container.clear()
+            with progress_container:
+                im_info_card(f"Generation failed: {safe_msg}", variant="error")
+        except RuntimeError:
+            logger.debug("Could not show failure UI: client disconnected")
 
 
 async def _apply_music(
@@ -271,40 +283,42 @@ def _format_file_size(path: Path) -> str:
 
 def _show_output(output_container, result_path: Path) -> None:
     """Display the generated video with success state."""
-    ui.notify("Video generated successfully!", type="positive")
-    output_container.clear()
-    with output_container:
-        im_separator()
+    try:
+        ui.notify("Video generated successfully!", type="positive")
+        output_container.clear()
+        with output_container:
+            im_separator()
 
-        # Success banner
-        with (
-            ui.element("div").classes("w-full rounded-lg p-4 im-alert-success"),
-            ui.row().classes("items-center gap-3"),
-        ):
-            ui.icon("check_circle").classes("text-2xl").style("color: var(--im-success)")
-            with ui.column().classes("gap-0"):
-                ui.label("Your memory video is ready!").classes("text-base font-semibold").style(
-                    "color: var(--im-success)"
+            # Success banner
+            with (
+                ui.element("div").classes("w-full rounded-lg p-4 im-alert-success"),
+                ui.row().classes("items-center gap-3"),
+            ):
+                ui.icon("check_circle").classes("text-2xl").style("color: var(--im-success)")
+                with ui.column().classes("gap-0"):
+                    ui.label("Your memory video is ready!").classes(
+                        "text-base font-semibold"
+                    ).style("color: var(--im-success)")
+                    if result_path.exists():
+                        file_size = _format_file_size(result_path)
+                        ui.label(f"Saved to: {result_path} ({file_size})").classes(
+                            "text-sm"
+                        ).style("color: var(--im-text-secondary)")
+
+            if result_path.exists():
+                video_url = nicegui_app.add_media_file(local_file=result_path)
+                video_wrapper = (
+                    ui.element("div")
+                    .classes("rounded-xl overflow-hidden mt-4")
+                    .style("background: var(--im-bg)")
                 )
-                if result_path.exists():
-                    file_size = _format_file_size(result_path)
-                    ui.label(f"Saved to: {result_path} ({file_size})").classes("text-sm").style(
-                        "color: var(--im-text-secondary)"
+                with video_wrapper:
+                    ui.video(video_url).classes("w-full max-w-2xl").style(
+                        "max-height: 60vh; object-fit: contain"
                     )
-
-        if result_path.exists():
-            video_url = nicegui_app.add_media_file(local_file=result_path)
-            video_wrapper = (
-                ui.element("div")
-                .classes("rounded-xl overflow-hidden mt-4")
-                .style("background: var(--im-bg)")
-            )
-            with video_wrapper:
-                ui.video(video_url).classes("w-full max-w-2xl").style(
-                    "max-height: 60vh; object-fit: contain"
+                ui.run_javascript(
+                    "document.querySelector('.im-alert-success')"
+                    "?.scrollIntoView({behavior: 'smooth', block: 'start'})"
                 )
-            # Auto-scroll to the video player
-            ui.run_javascript(
-                "document.querySelector('.im-alert-success')"
-                "?.scrollIntoView({behavior: 'smooth', block: 'start'})"
-            )
+    except RuntimeError:
+        logger.info(f"Client disconnected, skipping result UI. Video saved at: {result_path}")
