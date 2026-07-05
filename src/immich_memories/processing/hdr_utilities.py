@@ -333,6 +333,8 @@ def _encoder_args_macos(crf: int, preserve_hdr: bool, color_trc: str) -> list[st
 
 def _encoder_args_nvenc(crf: int, preserve_hdr: bool, color_trc: str) -> list[str] | None:
     """NVENC encoder args, or None if unavailable."""
+    from immich_memories.processing.hardware import _probe_encoder_real
+
     try:
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True
@@ -341,6 +343,10 @@ def _encoder_args_nvenc(crf: int, preserve_hdr: bool, color_trc: str) -> list[st
             return None
     except (OSError, subprocess.SubprocessError):
         return None
+
+    if not _probe_encoder_real("hevc_nvenc"):
+        return None
+
     base = [
         "-c:v",
         "hevc_nvenc",
